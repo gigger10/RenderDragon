@@ -165,57 +165,41 @@ jobs:
           java -jar ../../apktool.jar b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
-      - name: Prepare keystore for signing
+      - name: Sign APK (import keystore from secrets)
         if: ${{ matrix.do == 'true' }}
-        id: keystore
         shell: bash
-        env:
-          KS_BASE64: ${{ secrets.KEYSTORE_BASE64 || '' }}
-          KS_ALIAS: ${{ secrets.KEYSTORE_ALIAS || 'androiddebugkey' }}
-          KS_STOREPASS: ${{ secrets.KEYSTORE_STOREPASS || 'android' }}
-          KS_KEYPASS: ${{ secrets.KEYSTORE_KEYPASS || 'android' }}
         run: |
           set -euo pipefail
           mkdir -p keystore
-          if [[ -n "$KS_BASE64" ]]; then
-            echo "$KS_BASE64" | base64 -d > keystore/keystore.jks
-            echo "Using keystore from secrets."
-            KS_FILE="keystore/keystore.jks"
-          else
-            echo "No keystore secret provided, generating debug keystore..."
-            keytool -genkeypair -v \
-              -keystore keystore/debug.jks \
-              -storepass "$KS_STOREPASS" \
-              -keypass "$KS_KEYPASS" \
-              -alias "$KS_ALIAS" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname 'CN=Android Debug,O=Android,C=US'
-            KS_FILE="keystore/debug.jks"
-          fi
-          echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
-          echo "storepass=$KS_STOREPASS" >> "$GITHUB_OUTPUT"
-          echo "keypass=$KS_KEYPASS" >> "$GITHUB_OUTPUT"
-          echo "path=$KS_FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Sign APK
-        if: ${{ matrix.do == 'true' }}
-        shell: bash
-        env:
-          KS_PATH: ${{ steps.keystore.outputs.path }}
-          KS_ALIAS: ${{ steps.keystore.outputs.alias }}
-          KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
-          KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
-        run: |
-          set -euo pipefail
-          cd work/${{ matrix.archlabel }}
+          if [[ -z "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
+            echo "ERROR: KEYSTORE_BASE64 secret is missing!"
+            exit 1
+          fi
+
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore/keystore.jks
+
+          KS_PATH="keystore/keystore.jks"
+          KS_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
+          KS_STOREPASS="${{ secrets.KEYSTORE_STOREPASS }}"
+          KS_KEYPASS="${{ secrets.KEYSTORE_KEYPASS }}"
+
+          if [[ ! -f "$KS_PATH" ]]; then
+            echo "ERROR: Keystore file not found at $KS_PATH"
+            exit 1
+          fi
+
           echo "Signing with keystore: $KS_PATH, alias: $KS_ALIAS"
           ls -l "$KS_PATH"
+
+          cd work/${{ matrix.archlabel }}
           mkdir -p signed
           java -jar ../../uber.jar -a unsigned.apk \
             --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
             --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
             --allowResign \
             --out signed
+
           cd signed
           SIGNED_APK=$(ls signed/*.apk | head -n1)
           mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
