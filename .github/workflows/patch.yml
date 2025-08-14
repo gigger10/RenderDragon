@@ -33,10 +33,6 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      KS_PATH: ${{ steps.keystore.outputs.path }}
-      KS_ALIAS: ${{ steps.keystore.outputs.alias }}
-      KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
-      KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
       url32: ${{ steps.parse.outputs.url32 }}
       url64: ${{ steps.parse.outputs.url64 }}
       do32: ${{ steps.parse.outputs.do32 }}
@@ -78,39 +74,6 @@ jobs:
         id: pkgn
         run: |
           echo "package_name=${{ inputs.package_name }}" >> "$GITHUB_OUTPUT"
-
-      - name: Prepare keystore
-        id: keystore
-        shell: bash
-        env:
-          INP_BASE64: ${{ inputs.keystore_base64 || secrets.KEYSTORE_BASE64 || '' }}
-          INP_ALIAS: ${{ inputs.keystore_alias || secrets.KEYSTORE_ALIAS || '' }}
-          INP_STOREPASS: ${{ inputs.keystore_storepass || secrets.KEYSTORE_STOREPASS || '' }}
-          INP_KEYPASS: ${{ inputs.keystore_keypass || secrets.KEYSTORE_KEYPASS || '' }}
-        run: |
-          set -euo pipefail
-          mkdir -p keystore
-          if [[ -n "$INP_BASE64" ]]; then
-            echo "$INP_BASE64" | base64 -d > keystore/keystore.jks
-            echo "Using provided keystore."
-            echo "alias=${INP_ALIAS}" >> "$GITHUB_OUTPUT"
-            echo "storepass=${INP_STOREPASS}" >> "$GITHUB_OUTPUT"
-            echo "keypass=${INP_KEYPASS}" >> "$GITHUB_OUTPUT"
-            echo "path=keystore/keystore.jks" >> "$GITHUB_OUTPUT"
-          else
-            echo "No keystore provided. Generating debug keystore…"
-            keytool -genkeypair -v \
-              -keystore keystore/debug.jks \
-              -storepass android \
-              -keypass android \
-              -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname 'CN=Android Debug,O=Android,C=US'
-            echo "alias=androiddebugkey" >> "$GITHUB_OUTPUT"
-            echo "storepass=android" >> "$GITHUB_OUTPUT"
-            echo "keypass=android" >> "$GITHUB_OUTPUT"
-            echo "path=keystore/debug.jks" >> "$GITHUB_OUTPUT"
-          fi
 
   patch:
     needs: prepare
@@ -161,7 +124,7 @@ jobs:
           curl -L "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -o uber.jar
           curl -L "https://github.com/iBotPeaches/Apktool/releases/download/v2.12.0/apktool_2.12.0.jar" -o apktool.jar
 
-      - name: Download APK (${{ matrix.archlabel }}-bit)
+      - name: Download APK
         if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
@@ -220,14 +183,46 @@ jobs:
           java -jar ../../apktool.jar b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
+      - name: Prepare keystore for signing
+        if: ${{ matrix.do == 'true' }}
+        id: keystore
+        shell: bash
+        env:
+          INP_BASE64: ${{ inputs.keystore_base64 || secrets.KEYSTORE_BASE64 || '' }}
+          INP_ALIAS: ${{ inputs.keystore_alias || secrets.KEYSTORE_ALIAS || 'androiddebugkey' }}
+          INP_STOREPASS: ${{ inputs.keystore_storepass || secrets.KEYSTORE_STOREPASS || 'android' }}
+          INP_KEYPASS: ${{ inputs.keystore_keypass || secrets.KEYSTORE_KEYPASS || 'android' }}
+        run: |
+          set -euo pipefail
+          mkdir -p keystore
+          if [[ -n "$INP_BASE64" ]]; then
+            echo "$INP_BASE64" | base64 -d > keystore/keystore.jks
+            echo "Using keystore from secrets."
+            KS_FILE="keystore/keystore.jks"
+          else
+            echo "No keystore secret provided, generating debug keystore..."
+            keytool -genkeypair -v \
+              -keystore keystore/debug.jks \
+              -storepass "$INP_STOREPASS" \
+              -keypass "$INP_KEYPASS" \
+              -alias "$INP_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname 'CN=Android Debug,O=Android,C=US'
+            KS_FILE="keystore/debug.jks"
+          fi
+          echo "alias=$INP_ALIAS" >> "$GITHUB_OUTPUT"
+          echo "storepass=$INP_STOREPASS" >> "$GITHUB_OUTPUT"
+          echo "keypass=$INP_KEYPASS" >> "$GITHUB_OUTPUT"
+          echo "path=$KS_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Sign APK
         if: ${{ matrix.do == 'true' }}
         shell: bash
         env:
-          KS_PATH: ${{ needs.prepare.outputs.KS_PATH }}
-          KS_ALIAS: ${{ needs.prepare.outputs.KS_ALIAS }}
-          KS_STOREPASS: ${{ needs.prepare.outputs.KS_STOREPASS }}
-          KS_KEYPASS: ${{ needs.prepare.outputs.KS_KEYPASS }}
+          KS_PATH: ${{ steps.keystore.outputs.path }}
+          KS_ALIAS: ${{ steps.keystore.outputs.alias }}
+          KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
+          KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
         run: |
           set -euo pipefail
           cd work/${{ matrix.archlabel }}
