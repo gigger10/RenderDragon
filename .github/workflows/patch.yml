@@ -249,7 +249,9 @@ jobs:
          --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
          --allowResign \
          --overwrite
-         mv signed/unsigned.apk "minecraft-patched-${{ matrix.archlabel }}.apk"
+         cd signed
+         SIGNED_APK=$(ls *.apk | head -n1)
+         mv "$SIGNED_APK" "../minecraft-patched-${{ matrix.archlabel }}.apk"
 
       - name: Upload artifact (${{ matrix.archlabel }}-bit)
         if: ${{ matrix.do == 'true' }}
