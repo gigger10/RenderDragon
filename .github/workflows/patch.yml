@@ -129,7 +129,7 @@ jobs:
           mkdir -p mtb
           curl -L "https://github.com/mcbegamerxx954/mtbinloader2/releases/download/v0.1.9-beta/${{ matrix.mtb_asset }}" -o "mtb/${{ matrix.mtb_asset }}"
           curl -L "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -o uber.jar
-          curl -L "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -o apktool.jar
+          curl -L "https://github.com/iBotPeaches/Apktool/releases/download/v2.12.0/apktool_2.12.0.jar" -o apktool.jar
 
       - name: Prepare keystore
         if: ${{ matrix.do == 'true' }}
