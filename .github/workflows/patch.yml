@@ -170,20 +170,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p keystore
 
-          if [[ -z "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
-            echo "ERROR: KEYSTORE_BASE64 secret is missing!"
-            exit 1
-          fi
-
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > keystore/keystore.jks
+          # Copy keystore into current work dir to avoid path issues
+          mkdir -p work/${{ matrix.archlabel }}/keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > work/${{ matrix.archlabel }}/keystore/keystore.jks
 
           KS_PATH="keystore/keystore.jks"
           KS_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
           KS_STOREPASS="${{ secrets.KEYSTORE_STOREPASS }}"
           KS_KEYPASS="${{ secrets.KEYSTORE_KEYPASS }}"
 
+          cd work/${{ matrix.archlabel }}
           if [[ ! -f "$KS_PATH" ]]; then
             echo "ERROR: Keystore file not found at $KS_PATH"
             exit 1
@@ -192,7 +189,6 @@ jobs:
           echo "Signing with keystore: $KS_PATH, alias: $KS_ALIAS"
           ls -l "$KS_PATH"
 
-          cd work/${{ matrix.archlabel }}
           mkdir -p signed
           java -jar ../../uber.jar -a unsigned.apk \
             --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
