@@ -156,13 +156,13 @@ jobs:
           set -euo pipefail
           cd work/${{ matrix.archlabel }}
           rm -rf decoded
-          java -jar ../../apktool.jar d unsigned.apk -o decoded -f
+          java -jar "$GITHUB_WORKSPACE/apktool.jar" d unsigned.apk -o decoded -f
           if grep -q '^renameManifestPackage:' decoded/apktool.yml; then
             sed -i 's|^renameManifestPackage:.*|renameManifestPackage: '"$PKG"'|' decoded/apktool.yml
           else
             echo "renameManifestPackage: $PKG" >> decoded/apktool.yml
           fi
-          java -jar ../../apktool.jar b decoded -o rebuilt.apk
+          java -jar "$GITHUB_WORKSPACE/apktool.jar" b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
       - name: Sign APK (secrets or debug fallback)
@@ -171,16 +171,17 @@ jobs:
         run: |
           set -euo pipefail
           WORKDIR="$(pwd)"
-          mkdir -p "$WORKDIR/keystore"
+          ROOT_DIR="${GITHUB_WORKSPACE:-$WORKDIR}"
+          mkdir -p "$ROOT_DIR/keystore"
 
           IMPORT_OK=true
           if [[ -n "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$WORKDIR/keystore/keystore.jks"
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$ROOT_DIR/keystore/keystore.jks"
           else
             IMPORT_OK=false
           fi
 
-          KS_PATH="$WORKDIR/keystore/keystore.jks"
+          KS_PATH="$ROOT_DIR/keystore/keystore.jks"
           KS_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
           KS_STOREPASS="${{ secrets.KEYSTORE_STOREPASS }}"
           KS_KEYPASS="${{ secrets.KEYSTORE_KEYPASS }}"
@@ -193,7 +194,7 @@ jobs:
 
           if ! $IMPORT_OK; then
             echo "Generating debug keystore..."
-            KS_PATH="$WORKDIR/keystore/debug.jks"
+            KS_PATH="$ROOT_DIR/keystore/debug.jks"
             KS_ALIAS="androiddebugkey"
             KS_STOREPASS="android"
             KS_KEYPASS="android"
@@ -210,7 +211,7 @@ jobs:
           ls -l "$KS_PATH"
 
           mkdir -p signed
-          java -jar ../../uber.jar -a unsigned.apk \
+          java -jar "$ROOT_DIR/uber.jar" -a unsigned.apk \
             --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
             --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
             --allowResign \
