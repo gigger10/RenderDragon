@@ -12,22 +12,6 @@ on:
         description: "Optional package name override (e.g., com.example.mcpatched)"
         required: false
         type: string
-      keystore_base64:
-        description: "BASE64 of your .jks/.keystore (leave blank to auto-generate debug keystore)"
-        required: false
-        type: string
-      keystore_alias:
-        description: "Keystore alias (ignored if auto-generating)"
-        required: false
-        type: string
-      keystore_storepass:
-        description: "Keystore store password (ignored if auto-generating)"
-        required: false
-        type: string
-      keystore_keypass:
-        description: "Key password (ignored if auto-generating)"
-        required: false
-        type: string
 
 jobs:
   prepare:
@@ -63,8 +47,6 @@ jobs:
               url64="$(echo "$line" | cut -d: -f2- | xargs)"
             fi
           done < "$FILE"
-          [[ -n "$url32" ]] && echo "Found 32-bit URL: $url32" || echo "No 32-bit URL provided."
-          [[ -n "$url64" ]] && echo "Found 64-bit URL: $url64" || echo "No 64-bit URL provided."
           echo "url32=$url32" >> "$GITHUB_OUTPUT"
           echo "url64=$url64" >> "$GITHUB_OUTPUT"
           echo "do32=$([[ -n "$url32" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -188,31 +170,31 @@ jobs:
         id: keystore
         shell: bash
         env:
-          INP_BASE64: ${{ inputs.keystore_base64 || secrets.KEYSTORE_BASE64 || '' }}
-          INP_ALIAS: ${{ inputs.keystore_alias || secrets.KEYSTORE_ALIAS || 'androiddebugkey' }}
-          INP_STOREPASS: ${{ inputs.keystore_storepass || secrets.KEYSTORE_STOREPASS || 'android' }}
-          INP_KEYPASS: ${{ inputs.keystore_keypass || secrets.KEYSTORE_KEYPASS || 'android' }}
+          KS_BASE64: ${{ secrets.KEYSTORE_BASE64 || '' }}
+          KS_ALIAS: ${{ secrets.KEYSTORE_ALIAS || 'androiddebugkey' }}
+          KS_STOREPASS: ${{ secrets.KEYSTORE_STOREPASS || 'android' }}
+          KS_KEYPASS: ${{ secrets.KEYSTORE_KEYPASS || 'android' }}
         run: |
           set -euo pipefail
           mkdir -p keystore
-          if [[ -n "$INP_BASE64" ]]; then
-            echo "$INP_BASE64" | base64 -d > keystore/keystore.jks
+          if [[ -n "$KS_BASE64" ]]; then
+            echo "$KS_BASE64" | base64 -d > keystore/keystore.jks
             echo "Using keystore from secrets."
             KS_FILE="keystore/keystore.jks"
           else
             echo "No keystore secret provided, generating debug keystore..."
             keytool -genkeypair -v \
               -keystore keystore/debug.jks \
-              -storepass "$INP_STOREPASS" \
-              -keypass "$INP_KEYPASS" \
-              -alias "$INP_ALIAS" \
+              -storepass "$KS_STOREPASS" \
+              -keypass "$KS_KEYPASS" \
+              -alias "$KS_ALIAS" \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -dname 'CN=Android Debug,O=Android,C=US'
             KS_FILE="keystore/debug.jks"
           fi
-          echo "alias=$INP_ALIAS" >> "$GITHUB_OUTPUT"
-          echo "storepass=$INP_STOREPASS" >> "$GITHUB_OUTPUT"
-          echo "keypass=$INP_KEYPASS" >> "$GITHUB_OUTPUT"
+          echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
+          echo "storepass=$KS_STOREPASS" >> "$GITHUB_OUTPUT"
+          echo "keypass=$KS_KEYPASS" >> "$GITHUB_OUTPUT"
           echo "path=$KS_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Sign APK
