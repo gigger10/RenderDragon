@@ -92,14 +92,14 @@ jobs:
         include:
           - archlabel: "32"
             abi: "armeabi-v7a"
-            addneeded: "libmaterialbinloader-arm.so"
-            mtb_asset: "libmaterialbinloader-arm.so"
+            addneeded: "libmtbinloader2_armv7-linux-androideabi.so"
+            mtb_asset: "libmtbinloader2_armv7-linux-androideabi.so"
             url: ${{ needs.prepare.outputs.url32 }}
             do: ${{ needs.prepare.outputs.do32 }}
           - archlabel: "64"
             abi: "arm64-v8a"
-            addneeded: "libmaterialbinloader-arm64.so"
-            mtb_asset: "libmaterialbinloader-arm64.so"
+            addneeded: "libmtbinloader2_aarch64-linux-android.so"
+            mtb_asset: "libmtbinloader2_aarch64-linux-android.so"
             url: ${{ needs.prepare.outputs.url64 }}
             do: ${{ needs.prepare.outputs.do64 }}
 
