@@ -136,10 +136,10 @@ jobs:
         id: keystore
         shell: bash
         env:
-          INP_BASE64: ${{ inputs.keystore_base64 }}
-          INP_ALIAS: ${{ inputs.keystore_alias }}
-          INP_STOREPASS: ${{ inputs.keystore_storepass }}
-          INP_KEYPASS: ${{ inputs.keystore_keypass }}
+          INP_BASE64: ${{ secrets.keystore_base64 }}
+          INP_ALIAS: ${{ secrets.keystore_alias }}
+          INP_STOREPASS: ${{ secrets.keystore_storepass }}
+          INP_KEYPASS: ${{ secrets.keystore_keypass }}
         run: |
           set -euo pipefail
           mkdir -p keystore
