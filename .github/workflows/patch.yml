@@ -125,24 +125,10 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y unzip zip curl xxd
-
-          # Download patchelf (static build for Linux x86_64)
-          PATCHELF_URL="https://github.com/NixOS/patchelf/releases/download/0.18.0/patchelf-0.18.0-x86_64.tar.bz2"
-          curl -L "$PATCHELF_URL" -o patchelf.tar.bz2
-          tar -xjf patchelf.tar.bz2
-          # Put patchelf in PATH
-          sudo mv patchelf-*/bin/patchelf /usr/local/bin/patchelf
-          patchelf --version
-
-          # Download mtbinloader2 .so (v0.1.9-beta)
+          sudo apt-get install -y unzip zip curl xxd patchelf openjdk-17-jdk
           mkdir -p mtb
           curl -L "https://github.com/mcbegamerxx954/mtbinloader2/releases/download/v0.1.9-beta/${{ matrix.mtb_asset }}" -o "mtb/${{ matrix.mtb_asset }}"
-
-          # Uber APK Signer (includes zipalign)
           curl -L "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -o uber.jar
-
-          # apktool (download jar directly)
           curl -L "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -o apktool.jar
 
       - name: Prepare keystore
