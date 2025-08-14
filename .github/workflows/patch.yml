@@ -170,10 +170,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          WORKDIR="$(pwd)"
-          ROOT_DIR="${GITHUB_WORKSPACE:-$WORKDIR}"
+          ROOT_DIR="$GITHUB_WORKSPACE"
+          APK_DIR="$ROOT_DIR/work/${{ matrix.archlabel }}"
           mkdir -p "$ROOT_DIR/keystore"
 
+          # Try to import keystore from secrets
           IMPORT_OK=true
           if [[ -n "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$ROOT_DIR/keystore/keystore.jks"
@@ -192,6 +193,7 @@ jobs:
             fi
           fi
 
+          # Fallback to debug keystore if import fails
           if ! $IMPORT_OK; then
             echo "Generating debug keystore..."
             KS_PATH="$ROOT_DIR/keystore/debug.jks"
@@ -210,6 +212,7 @@ jobs:
           echo "Signing with keystore: $KS_PATH, alias: $KS_ALIAS"
           ls -l "$KS_PATH"
 
+          cd "$APK_DIR"
           mkdir -p signed
           java -jar "$ROOT_DIR/uber.jar" -a unsigned.apk \
             --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
@@ -218,7 +221,7 @@ jobs:
             --out signed
 
           cd signed
-          SIGNED_APK=$(ls signed/*.apk | head -n1)
+          SIGNED_APK=$(ls *.apk | head -n1)
           mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
 
       - name: Upload artifact
