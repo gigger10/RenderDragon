@@ -165,25 +165,45 @@ jobs:
           java -jar ../../apktool.jar b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
-      - name: Sign APK (import keystore from secrets)
+      - name: Sign APK (secrets or debug fallback)
         if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
+          WORKDIR="$(pwd)"
+          mkdir -p "$WORKDIR/keystore"
 
-          # Copy keystore into current work dir to avoid path issues
-          mkdir -p work/${{ matrix.archlabel }}/keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > work/${{ matrix.archlabel }}/keystore/keystore.jks
+          IMPORT_OK=true
+          if [[ -n "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$WORKDIR/keystore/keystore.jks"
+          else
+            IMPORT_OK=false
+          fi
 
-          KS_PATH="keystore/keystore.jks"
+          KS_PATH="$WORKDIR/keystore/keystore.jks"
           KS_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
           KS_STOREPASS="${{ secrets.KEYSTORE_STOREPASS }}"
           KS_KEYPASS="${{ secrets.KEYSTORE_KEYPASS }}"
 
-          cd work/${{ matrix.archlabel }}
-          if [[ ! -f "$KS_PATH" ]]; then
-            echo "ERROR: Keystore file not found at $KS_PATH"
-            exit 1
+          if $IMPORT_OK; then
+            if ! keytool -list -keystore "$KS_PATH" -storepass "$KS_STOREPASS" -alias "$KS_ALIAS" >/dev/null 2>&1; then
+              IMPORT_OK=false
+            fi
+          fi
+
+          if ! $IMPORT_OK; then
+            echo "Generating debug keystore..."
+            KS_PATH="$WORKDIR/keystore/debug.jks"
+            KS_ALIAS="androiddebugkey"
+            KS_STOREPASS="android"
+            KS_KEYPASS="android"
+            keytool -genkeypair -v \
+              -keystore "$KS_PATH" \
+              -storepass "$KS_STOREPASS" \
+              -keypass "$KS_KEYPASS" \
+              -alias "$KS_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
           fi
 
           echo "Signing with keystore: $KS_PATH, alias: $KS_ALIAS"
