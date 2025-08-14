@@ -1,0 +1,2 @@
+32: https://mcpedl.org/uploads_files/05-08-2025/minecraft-1-21-100.apk
+64: https://mcpedl.org/uploads_files/05-08-2025/minecraft-1-21-100-arm64-v8a.apk
