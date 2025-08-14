@@ -61,173 +61,91 @@ jobs:
     needs: prepare
     if: ${{ needs.prepare.outputs.do32 == 'true' || needs.prepare.outputs.do64 == 'true' }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - archlabel: "32"
-            abi: "armeabi-v7a"
-            addneeded: "libmtbinloader2_armv7-linux-androideabi.so"
-            mtb_asset: "libmtbinloader2_armv7-linux-androideabi.so"
-            url: ${{ needs.prepare.outputs.url32 }}
-            do: ${{ needs.prepare.outputs.do32 }}
-          - archlabel: "64"
-            abi: "arm64-v8a"
-            addneeded: "libmtbinloader2_aarch64-linux-android.so"
-            mtb_asset: "libmtbinloader2_aarch64-linux-android.so"
-            url: ${{ needs.prepare.outputs.url64 }}
-            do: ${{ needs.prepare.outputs.do64 }}
-
     steps:
-      - name: Skip if this arch not requested
-        if: ${{ matrix.do != 'true' }}
-        run: echo "Skipping ${{ matrix.archlabel }}-bit (no URL)."
-
       - name: Checkout
-        if: ${{ matrix.do == 'true' }}
         uses: actions/checkout@v4
 
       - name: Set up Java
-        if: ${{ matrix.do == 'true' }}
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
       - name: Install tools
-        if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y unzip zip curl xxd patchelf openjdk-17-jdk
           mkdir -p mtb
-          curl -L "https://github.com/mcbegamerxx954/mtbinloader2/releases/download/v0.1.9-beta/${{ matrix.mtb_asset }}" -o "mtb/${{ matrix.mtb_asset }}"
+          curl -L "https://github.com/mcbegamerxx954/mtbinloader2/releases/download/v0.1.9-beta/libmtbinloader2_armv7-linux-androideabi.so" -o "mtb/libmtbinloader2_armv7-linux-androideabi.so"
           curl -L "https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar" -o uber.jar
           curl -L "https://github.com/iBotPeaches/Apktool/releases/download/v2.12.0/apktool_2.12.0.jar" -o apktool.jar
 
       - name: Download APK
-        if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p work/${{ matrix.archlabel }}
-          cd work/${{ matrix.archlabel }}
-          curl -L "${{ matrix.url }}" -o input.apk
+          mkdir -p work/32
+          cd work/32
+          curl -L "${{ needs.prepare.outputs.url32 }}" -o input.apk
 
       - name: Unpack APK
-        if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          cd work/${{ matrix.archlabel }}
+          cd work/32
           mkdir -p apk
           unzip -q input.apk -d apk
-          if [[ ! -f "apk/lib/${{ matrix.abi }}/libminecraftpe.so" ]]; then
-            echo "libminecraftpe.so not found!" >&2
-            exit 1
-          fi
-          cp "apk/lib/${{ matrix.abi }}/libminecraftpe.so" libminecraftpe.so
+          cp "apk/lib/armeabi-v7a/libminecraftpe.so" libminecraftpe.so
 
       - name: Patch libminecraftpe.so
-        if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          cd work/${{ matrix.archlabel }}
-          patchelf --add-needed "${{ matrix.addneeded }}" libminecraftpe.so
-          install -m 0644 libminecraftpe.so "apk/lib/${{ matrix.abi }}/libminecraftpe.so"
-          install -m 0644 "../../mtb/${{ matrix.mtb_asset }}" "apk/lib/${{ matrix.abi }}/${{ matrix.mtb_asset }}"
+          cd work/32
+          patchelf --add-needed "mtb/libmtbinloader2_armv7-linux-androideabi.so" libminecraftpe.so
+          install -m 0644 libminecraftpe.so "apk/lib/armeabi-v7a/libminecraftpe.so"
+          install -m 0644 "../../mtb/libmtbinloader2_armv7-linux-androideabi.so" "apk/lib/armeabi-v7a/libmtbinloader2_armv7-linux-androideabi.so"
 
       - name: Rebuild unsigned APK
-        if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
-          cd work/${{ matrix.archlabel }}/apk
+          cd work/32/apk
           zip -qr ../unsigned.apk .
 
-      - name: Optionally rename package
-        if: ${{ matrix.do == 'true' && needs.prepare.outputs.package_name != '' }}
-        shell: bash
-        env:
-          PKG: ${{ needs.prepare.outputs.package_name }}
-        run: |
-          set -euo pipefail
-          cd work/${{ matrix.archlabel }}
-          rm -rf decoded
-          java -jar "$GITHUB_WORKSPACE/apktool.jar" d unsigned.apk -o decoded -f
-          if grep -q '^renameManifestPackage:' decoded/apktool.yml; then
-            sed -i 's|^renameManifestPackage:.*|renameManifestPackage: '"$PKG"'|' decoded/apktool.yml
-          else
-            echo "renameManifestPackage: $PKG" >> decoded/apktool.yml
-          fi
-          java -jar "$GITHUB_WORKSPACE/apktool.jar" b decoded -o rebuilt.apk
-          mv rebuilt.apk unsigned.apk
-
-      - name: Sign APK (secrets or debug fallback)
-        if: ${{ matrix.do == 'true' }}
+      - name: Generate debug keystore
         shell: bash
         run: |
           set -euo pipefail
-          ROOT_DIR="$GITHUB_WORKSPACE"
-          APK_DIR="$ROOT_DIR/work/${{ matrix.archlabel }}"
-          mkdir -p "$ROOT_DIR/keystore"
+          mkdir -p "$GITHUB_WORKSPACE/keystore"
+          keytool -genkeypair -v \
+            -keystore "$GITHUB_WORKSPACE/keystore/debug.jks" \
+            -storepass android \
+            -keypass android \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
 
-          # Try to import keystore from secrets
-          IMPORT_OK=true
-          if [[ -n "${{ secrets.KEYSTORE_BASE64 }}" ]]; then
-            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$ROOT_DIR/keystore/keystore.jks"
-          else
-            IMPORT_OK=false
-          fi
-
-          KS_PATH="$ROOT_DIR/keystore/keystore.jks"
-          KS_ALIAS="${{ secrets.KEYSTORE_ALIAS }}"
-          KS_STOREPASS="${{ secrets.KEYSTORE_STOREPASS }}"
-          KS_KEYPASS="${{ secrets.KEYSTORE_KEYPASS }}"
-
-          if $IMPORT_OK; then
-            if ! keytool -list -keystore "$KS_PATH" -storepass "$KS_STOREPASS" -alias "$KS_ALIAS" >/dev/null 2>&1; then
-              IMPORT_OK=false
-            fi
-          fi
-
-          # Fallback to debug keystore if import fails
-          if ! $IMPORT_OK; then
-            echo "Generating debug keystore..."
-            KS_PATH="$ROOT_DIR/keystore/debug.jks"
-            KS_ALIAS="androiddebugkey"
-            KS_STOREPASS="android"
-            KS_KEYPASS="android"
-            keytool -genkeypair -v \
-              -keystore "$KS_PATH" \
-              -storepass "$KS_STOREPASS" \
-              -keypass "$KS_KEYPASS" \
-              -alias "$KS_ALIAS" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-          echo "Signing with keystore: $KS_PATH, alias: $KS_ALIAS"
-          ls -l "$KS_PATH"
-
-          cd "$APK_DIR"
+      - name: Sign APK with debug key
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work/32
           mkdir -p signed
-          java -jar "$ROOT_DIR/uber.jar" -a unsigned.apk \
-            --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
-            --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
+          java -jar "$GITHUB_WORKSPACE/uber.jar" -a unsigned.apk \
+            --ks "$GITHUB_WORKSPACE/keystore/debug.jks" \
+            --ksAlias androiddebugkey \
+            --ksPass android \
+            --keyPass android \
             --allowResign \
             --out signed
-
           cd signed
-          SIGNED_APK=$(ls *.apk | head -n1)
-          mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
+          mv *.apk "minecraft-rd-1.21.100-32.apk"
 
       - name: Upload artifact
-        if: ${{ matrix.do == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: minecraft-rd-1.21.100-${{ matrix.archlabel }}
-          path: work/${{ matrix.archlabel }}/minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk
-          if-no-files-found: error
+          name: minecraft-rd-1.21.100-32
+          path: work/32/signed/minecraft-rd-1.21.100-32.apk
