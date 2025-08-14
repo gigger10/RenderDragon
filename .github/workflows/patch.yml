@@ -246,7 +246,7 @@ jobs:
          --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
          --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
          --allowResign \
-         --o signed
+         --out signed
          cd signed
          SIGNED_APK=$(ls signed/*.apk | head -n1)
          mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
