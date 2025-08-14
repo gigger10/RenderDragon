@@ -242,21 +242,19 @@ jobs:
          set -euo pipefail
          cd work/${{ matrix.archlabel }}
          mkdir -p signed
-         java -jar ../../uber.jar \
-         --in unsigned.apk \
-         --out signed \
+         java -jar ../../uber.jar -a unsigned.apk \
          --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
          --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
          --allowResign \
-         --overwrite
+         --o signed
          cd signed
-         SIGNED_APK=$(ls *.apk | head -n1)
-         mv "$SIGNED_APK" "../minecraft-patched-${{ matrix.archlabel }}.apk"
+         SIGNED_APK=$(ls signed/*.apk | head -n1)
+         mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
 
       - name: Upload artifact (${{ matrix.archlabel }}-bit)
         if: ${{ matrix.do == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: minecraft-patched-${{ matrix.archlabel }}
-          path: work/${{ matrix.archlabel }}/minecraft-patched-${{ matrix.archlabel }}.apk
+          name: minecraft-rd-1.21.100-${{ matrix.archlabel }}
+          path: work/${{ matrix.archlabel }}/minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk
           if-no-files-found: error
