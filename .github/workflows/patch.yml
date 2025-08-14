@@ -224,34 +224,26 @@ jobs:
           java -jar ../../apktool.jar b decoded --use-aapt2 --rename-manifest-package "$PKG" -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
-      - name: Sign (zipalign + sign) with Uber APK Signer
+      - name: Sign APK (${{ matrix.archlabel }}-bit)
         if: ${{ matrix.do == 'true' }}
         shell: bash
         env:
-          KS_PATH: ${{ steps.keystore.outputs.path }}
-          KS_ALIAS: ${{ steps.keystore.outputs.alias }}
-          KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
-          KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
+         KS_PATH: ${{ steps.keystore.outputs.path }}
+         KS_ALIAS: ${{ steps.keystore.outputs.alias }}
+         KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
+         KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
         run: |
-          set -euo pipefail
-          cd work/${{ matrix.archlabel }}
-          # Uber APK Signer will zipalign and sign; we pass explicit keystore
-          java -jar ../../uber.jar \
-            --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
-            --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
-            --in unsigned.apk --out .
-          # Output gets name like unsigned-aligned-debugSigned.apk or similar
-          # Normalize the name:
-          OUT="minecraft-patched-${{ matrix.archlabel }}.apk"
-          # Find the signed apk
-          SIGNED="$(ls -1 *Signed.apk | head -n1)"
-          if [[ -z "$SIGNED" ]]; then
-            echo "Signed APK not found." >&2
-            ls -la
-            exit 1
-          fi
-          mv "$SIGNED" "$OUT"
-          echo "OUT=$OUT" >> "$GITHUB_OUTPUT"
+         set -euo pipefail
+         cd work/${{ matrix.archlabel }}
+         mkdir -p signed
+         java -jar ../../uber.jar \
+         --in unsigned.apk \
+         --out signed \
+         --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
+         --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
+         --allowResign \
+         --overwrite
+         mv signed/unsigned.apk "minecraft-patched-${{ matrix.archlabel }}.apk"
 
       - name: Upload artifact (${{ matrix.archlabel }}-bit)
         if: ${{ matrix.do == 'true' }}
