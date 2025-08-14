@@ -221,7 +221,13 @@ jobs:
           # Decode
           java -jar ../../apktool.jar d unsigned.apk -o decoded -f
           # Rebuild with renamed manifest package
-          java -jar ../../apktool.jar b decoded --use-aapt2 --rename-manifest-package "$PKG" -o rebuilt.apk
+          # If the key exists, replace it; if not, add it
+          if grep -q '^renameManifestPackage:' decoded/apktool.yml; then
+          sed -i 's|^renameManifestPackage:.*|renameManifestPackage: '"$PKG"'|' decoded/apktool.yml
+          else
+          echo "renameManifestPackage: $PKG" >> decoded/apktool.yml
+          fi
+          java -jar ../../apktool.jar b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
 
       - name: Sign APK (${{ matrix.archlabel }}-bit)
