@@ -12,7 +12,6 @@ on:
         description: "Optional package name override (e.g., com.example.mcpatched)"
         required: false
         type: string
-      # Keystore can also be provided via repository or org secrets (recommended).
       keystore_base64:
         description: "BASE64 of your .jks/.keystore (leave blank to auto-generate debug keystore)"
         required: false
@@ -56,10 +55,8 @@ jobs:
           url32=""
           url64=""
           while IFS= read -r line; do
-            # Trim spaces
             line="$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
             [[ -z "$line" ]] && continue
-            # Accept "32: link" or "64: link" (case-insensitive)
             if echo "$line" | grep -qiE '^32[[:space:]]*:'; then
               url32="$(echo "$line" | cut -d: -f2- | xargs)"
             elif echo "$line" | grep -qiE '^64[[:space:]]*:'; then
@@ -78,14 +75,12 @@ jobs:
       - name: Normalize package name input
         id: pkgn
         run: |
-          # Pass through or empty
           echo "package_name=${{ inputs.package_name }}" >> "$GITHUB_OUTPUT"
 
   patch:
     needs: prepare
     if: ${{ needs.prepare.outputs.do32 == 'true' || needs.prepare.outputs.do64 == 'true' }}
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
@@ -112,7 +107,7 @@ jobs:
         if: ${{ matrix.do == 'true' }}
         uses: actions/checkout@v4
 
-      - name: Set up Java (for apktool & signing)
+      - name: Set up Java
         if: ${{ matrix.do == 'true' }}
         uses: actions/setup-java@v4
         with:
@@ -136,14 +131,14 @@ jobs:
         id: keystore
         shell: bash
         env:
-          INP_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          INP_ALIAS: ${{ secrets.KEYSTORE_ALIAS }}
-          INP_STOREPASS: ${{ secrets.KEYSTORE_STOREPASS }}
-          INP_KEYPASS: ${{ secrets.KEYSTORE_KEYPASS }}
+          INP_BASE64: ${{ inputs.keystore_base64 || secrets.KEYSTORE_BASE64 || '' }}
+          INP_ALIAS: ${{ inputs.keystore_alias || secrets.KEYSTORE_ALIAS || '' }}
+          INP_STOREPASS: ${{ inputs.keystore_storepass || secrets.KEYSTORE_STOREPASS || '' }}
+          INP_KEYPASS: ${{ inputs.keystore_keypass || secrets.KEYSTORE_KEYPASS || '' }}
         run: |
           set -euo pipefail
           mkdir -p keystore
-          if [[ -n "${INP_BASE64}" ]]; then
+          if [[ -n "$INP_BASE64" ]]; then
             echo "$INP_BASE64" | base64 -d > keystore/keystore.jks
             echo "Using provided keystore."
             echo "alias=${INP_ALIAS}" >> "$GITHUB_OUTPUT"
@@ -152,8 +147,13 @@ jobs:
             echo "path=keystore/keystore.jks" >> "$GITHUB_OUTPUT"
           else
             echo "No keystore provided. Generating a debug keystore…"
-            keytool -genkeypair -v -keystore keystore/debug.jks -storepass android -keypass android -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkeypair -v \
+              -keystore keystore/debug.jks \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
             echo "alias=androiddebugkey" >> "$GITHUB_OUTPUT"
             echo "storepass=android" >> "$GITHUB_OUTPUT"
             echo "keypass=android" >> "$GITHUB_OUTPUT"
@@ -181,7 +181,6 @@ jobs:
 
           if [[ ! -f "apk/lib/${{ matrix.abi }}/libminecraftpe.so" ]]; then
             echo "libminecraftpe.so not found in lib/${{ matrix.abi }} of APK." >&2
-            echo "Ensure the provided APK is a full APK for the specified ABI (${{ matrix.abi }}), not a split base." >&2
             exit 1
           fi
 
@@ -193,23 +192,19 @@ jobs:
         run: |
           set -euo pipefail
           cd work/${{ matrix.archlabel }}
-          # Add dependency to material bin loader
           patchelf --add-needed "${{ matrix.addneeded }}" libminecraftpe.so
-          # replace back into APK tree
           install -m 0644 libminecraftpe.so "apk/lib/${{ matrix.abi }}/libminecraftpe.so"
-          # Add the loader .so into the APK tree (name must match NEEDED)
           install -m 0644 "../../mtb/${{ matrix.mtb_asset }}" "apk/lib/${{ matrix.abi }}/${{ matrix.mtb_asset }}"
 
-      - name: Rebuild unsigned APK (zip)
+      - name: Rebuild unsigned APK
         if: ${{ matrix.do == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
           cd work/${{ matrix.archlabel }}/apk
-          # Repack preserving directory structure
           zip -qr ../unsigned.apk .
 
-      - name: Optionally rename package (applicationId) with apktool
+      - name: Optionally rename package
         if: ${{ matrix.do == 'true' && needs.prepare.outputs.package_name != '' }}
         shell: bash
         env:
@@ -218,14 +213,11 @@ jobs:
           set -euo pipefail
           cd work/${{ matrix.archlabel }}
           rm -rf decoded
-          # Decode
           java -jar ../../apktool.jar d unsigned.apk -o decoded -f
-          # Rebuild with renamed manifest package
-          # If the key exists, replace it; if not, add it
           if grep -q '^renameManifestPackage:' decoded/apktool.yml; then
-          sed -i 's|^renameManifestPackage:.*|renameManifestPackage: '"$PKG"'|' decoded/apktool.yml
+            sed -i 's|^renameManifestPackage:.*|renameManifestPackage: '"$PKG"'|' decoded/apktool.yml
           else
-          echo "renameManifestPackage: $PKG" >> decoded/apktool.yml
+            echo "renameManifestPackage: $PKG" >> decoded/apktool.yml
           fi
           java -jar ../../apktool.jar b decoded -o rebuilt.apk
           mv rebuilt.apk unsigned.apk
@@ -234,22 +226,22 @@ jobs:
         if: ${{ matrix.do == 'true' }}
         shell: bash
         env:
-         KS_PATH: ${{ steps.keystore.outputs.path }}
-         KS_ALIAS: ${{ steps.keystore.outputs.alias }}
-         KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
-         KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
+          KS_PATH: ${{ steps.keystore.outputs.path }}
+          KS_ALIAS: ${{ steps.keystore.outputs.alias }}
+          KS_STOREPASS: ${{ steps.keystore.outputs.storepass }}
+          KS_KEYPASS: ${{ steps.keystore.outputs.keypass }}
         run: |
-         set -euo pipefail
-         cd work/${{ matrix.archlabel }}
-         mkdir -p signed
-         java -jar ../../uber.jar -a unsigned.apk \
-         --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
-         --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
-         --allowResign \
-         --out signed
-         cd signed
-         SIGNED_APK=$(ls signed/*.apk | head -n1)
-         mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
+          set -euo pipefail
+          cd work/${{ matrix.archlabel }}
+          mkdir -p signed
+          java -jar ../../uber.jar -a unsigned.apk \
+            --ks "$KS_PATH" --ksAlias "$KS_ALIAS" \
+            --ksPass "$KS_STOREPASS" --keyPass "$KS_KEYPASS" \
+            --allowResign \
+            --out signed
+          cd signed
+          SIGNED_APK=$(ls signed/*.apk | head -n1)
+          mv "$SIGNED_APK" "minecraft-rd-1.21.100-${{ matrix.archlabel }}.apk"
 
       - name: Upload artifact (${{ matrix.archlabel }}-bit)
         if: ${{ matrix.do == 'true' }}
